@@ -7,6 +7,7 @@ import { generateVoiceover } from '../services/voiceover.js'
 import { compileVideo } from '../services/videoCompiler.js'
 import { upsertUser, getUserStats, incrementUsage, logVideoGen } from '../db.js'
 import fs from 'fs'
+import path from 'path'
 
 interface VideoState {
   duration: number
@@ -256,7 +257,9 @@ export const createVideoWizard = new Scenes.WizardScene<Scenes.WizardContext>(
         logVideoGen(chatId).catch(() => {})
       }
 
-      fs.rmSync(videoPath, { force: true })
+      // Cleanup temp job directory
+      const jobDir = path.dirname(videoPath)
+      fs.rmSync(jobDir, { recursive: true, force: true })
       await ctx.reply('Use /create to make another video!').catch(() => {})
 
     } catch (e: any) {
