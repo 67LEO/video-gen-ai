@@ -1,0 +1,229 @@
+import { Scenes, Markup } from 'telegraf'
+import type { ScriptScene } from '../types.js'
+import { DURATIONS, ASPECT_OPTIONS, LANGUAGES } from '../config.js'
+import { writeScript } from '../services/scriptWriter.js'
+import { getDefaultStyle, generateImages } from '../services/imageGen.js'
+import { generateVoiceover } from '../services/voiceover.js'
+import { compileVideo } from '../services/videoCompiler.js'
+import fs from 'fs'
+
+interface VideoState {
+  duration: number
+  aspectRatio: string
+  language: string
+  topic: string
+  imageBase64s: string[]
+  audioBase64: string
+}
+
+function chunk<T>(arr: T[], n: number): T[][] {
+  const r: T[][] = []
+  for (let i = 0; i < arr.length; i += n) r.push(arr.slice(i, i + n))
+  return r
+}
+
+function state(ctx: Scenes.WizardContext): VideoState {
+  return ctx.wizard.state as unknown as VideoState
+}
+
+export const createVideoWizard = new Scenes.WizardScene<Scenes.WizardContext>(
+  'create-video',
+
+  // Step 0: Duration
+  async (ctx) => {
+    await ctx.reply(
+      '🎬 *Step 1/5: Video Duration*\n\nHow long should the video be?',
+      {
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard(
+          DURATIONS.map(d => Markup.button.callback(`${d}s`, `dur_${d}`)),
+        ),
+      },
+    )
+    return ctx.wizard.next()
+  },
+
+  // Step 1: Aspect Ratio
+  async (ctx) => {
+    if (!(ctx as any).callbackQuery?.data?.startsWith('dur_')) {
+      await ctx.reply('Please select a duration using the buttons.')
+      return
+    }
+    const cb = (ctx as any).callbackQuery
+    ;(state(ctx)).duration = parseInt(cb.data.replace('dur_', ''), 10)
+    await ctx.answerCbQuery()
+    await ctx.deleteMessage().catch(() => {})
+
+    await ctx.reply(
+      '📐 *Step 2/5: Aspect Ratio*\n\nChoose the video format:',
+      {
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard(
+          ASPECT_OPTIONS.map(a => Markup.button.callback(a.label, `aspect_${a.id}`)),
+        ),
+      },
+    )
+    return ctx.wizard.next()
+  },
+
+  // Step 2: Language
+  async (ctx) => {
+    if (!(ctx as any).callbackQuery?.data?.startsWith('aspect_')) {
+      await ctx.reply('Please select an aspect ratio.')
+      return
+    }
+    const cb = (ctx as any).callbackQuery
+    ;(state(ctx)).aspectRatio = cb.data.replace('aspect_', '')
+    await ctx.answerCbQuery()
+    await ctx.deleteMessage().catch(() => {})
+
+    const langRows = chunk(LANGUAGES, 2).map(row =>
+      row.map(l => Markup.button.callback(`${l.native}`, `lang_${l.code}`)),
+    )
+
+    await ctx.reply(
+      '🌐 *Step 3/5: Language*\n\nChoose the video language:',
+      {
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard(langRows),
+      },
+    )
+    return ctx.wizard.next()
+  },
+
+  // Step 3: Topic
+  async (ctx) => {
+    if (!(ctx as any).callbackQuery?.data?.startsWith('lang_')) {
+      await ctx.reply('Please select a language.')
+      return
+    }
+    const cb = (ctx as any).callbackQuery
+    const langCode = cb.data.replace('lang_', '')
+    const lang = LANGUAGES.find(l => l.code === langCode)
+    ;(state(ctx)).language = lang?.name || 'English USA'
+    await ctx.answerCbQuery()
+    await ctx.deleteMessage().catch(() => {})
+
+    await ctx.reply(
+      '✍️ *Step 4/5: Topic*\n\nWhat should the video be about?\n\n' +
+      'Examples:\n' +
+      '• "AI technology explained"\n' +
+      '• "ताजमहल का इतिहास"\n' +
+      '• "motivational speech for students"',
+      { parse_mode: 'Markdown' },
+    )
+    return ctx.wizard.next()
+  },
+
+  // Step 4: Preview & Confirm
+  async (ctx) => {
+    const msg = (ctx as any).message
+    if (!msg?.text || msg.text.startsWith('/')) {
+      await ctx.reply('Please send a text message with your topic.')
+      return
+    }
+    ;(state(ctx)).topic = msg.text
+    const s = state(ctx)
+    const aspect = ASPECT_OPTIONS.find(a => a.id === s.aspectRatio)
+
+    await ctx.reply(
+      `📋 *Preview*\n\n` +
+      `• Duration: ${s.duration}s\n` +
+      `• Aspect: ${aspect?.label || s.aspectRatio}\n` +
+      `• Language: ${s.language}\n` +
+      `• Topic: *${s.topic}*\n\n` +
+      `Generation takes ~1-2 minutes. Ready?`,
+      {
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard([
+          Markup.button.callback('✅ Generate Video', 'generate'),
+          Markup.button.callback('❌ Cancel', 'cancel'),
+        ]),
+      },
+    )
+    return ctx.wizard.next()
+  },
+
+  // Step 5: Generate & Send
+  async (ctx) => {
+    const cb = (ctx as any).callbackQuery
+    if (!cb) {
+      await ctx.reply('Please use the buttons to confirm.')
+      return
+    }
+
+    if (cb.data === 'cancel') {
+      await ctx.answerCbQuery()
+      await ctx.deleteMessage().catch(() => {})
+      await ctx.reply('Cancelled. Use /create to start again.')
+      return ctx.scene.leave()
+    }
+
+    await ctx.answerCbQuery()
+    const s = state(ctx)
+    const aspect = ASPECT_OPTIONS.find(a => a.id === s.aspectRatio)!
+
+    await ctx.editMessageText('⏳ *Generating your video...*\n\n1️⃣ Writing script...', { parse_mode: 'Markdown' })
+
+    try {
+      const sceneCount = Math.max(Math.round((s.duration * 2) / 60), 2)
+      const script = await writeScript(s.topic, s.language, sceneCount)
+
+      await ctx.editMessageText(
+        `⏳ *Generating...*\n\n1️⃣ ✅ Script (${script.scenes.length} scenes)\n2️⃣ Generating images...`,
+        { parse_mode: 'Markdown' },
+      )
+
+      const style = await getDefaultStyle()
+      const imageB64s = await generateImages(script.scenes, style, aspect.w, aspect.h)
+
+      await ctx.editMessageText(
+        `⏳ *Generating...*\n\n1️⃣ ✅ Script\n2️⃣ ✅ Images (${imageB64s.length})\n3️⃣ Generating voiceover...`,
+        { parse_mode: 'Markdown' },
+      )
+
+      const voiceText = script.scenes.map(s => s.audioText || s.description).join('. ')
+      const audioB64 = await generateVoiceover(voiceText, '21m00Tcm4TlvDq8ikWAM', s.language)
+
+      await ctx.editMessageText(
+        `⏳ *Generating...*\n\n1️⃣ ✅ Script\n2️⃣ ✅ Images\n3️⃣ ✅ Voiceover\n4️⃣ Compiling video...`,
+        { parse_mode: 'Markdown' },
+      )
+
+      const videoPath = compileVideo(imageB64s, audioB64, aspect.w, aspect.h, s.duration / imageB64s.length)
+
+      await ctx.editMessageText('📤 Uploading video...', { parse_mode: 'Markdown' })
+
+      await ctx.replyWithVideo(
+        { source: fs.createReadStream(videoPath) },
+        {
+          caption:
+            `🎬 *${s.topic}*\n` +
+            `⏱ ${s.duration}s | 🌐 ${s.language}\n` +
+            `_Generated by AI Video Bot_`,
+          parse_mode: 'Markdown',
+        },
+      )
+
+      fs.rmSync(videoPath, { force: true })
+      await ctx.reply('Use /create to make another video!')
+
+    } catch (e: any) {
+      const msg = e.message || 'Unknown error'
+      if (msg === 'HIGH_TRAFFIC') {
+        await ctx.editMessageText(
+          '⚠️ *Image servers are busy.*\n\nPlease try again in a few minutes.',
+          { parse_mode: 'Markdown' },
+        )
+      } else {
+        const errText = msg.split('\n').slice(0, 5).join('\n')
+        await ctx.editMessageText(
+          `❌ *Error:*\n\`\`\`\n${errText}\n\`\`\`\n\nUse /create to try again.`,
+          { parse_mode: 'Markdown' },
+        )
+      }
+    }
+
+    return ctx.scene.leave()
+  },
+)

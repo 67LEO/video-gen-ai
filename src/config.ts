@@ -1,0 +1,36 @@
+import path from 'path'
+import { fileURLToPath } from 'url'
+import { API_BASE as _API, AES_KEY as _AES, ELEVENLABS_BASE as _EL } from './secrets.js'
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const root = path.resolve(__dirname, '..')
+
+export const API_BASE = _API
+export const AES_KEY = _AES
+export const ELEVENLABS_BASE = _EL
+export const FFMPEG_PATH = process.env.FFMPEG_PATH || ''
+export const TMP_DIR = path.join(root, 'tmp')
+
+export const DURATIONS = [15, 30, 60]
+export const ASPECT_OPTIONS = [
+  { id: 'portrait', label: 'Portrait (9:16)', w: 648, h: 1152 },
+  { id: 'landscape', label: 'Landscape (16:9)', w: 1152, h: 648 },
+]
+
+export interface LangOption { code: string; name: string; native: string }
+export const LANGUAGES: LangOption[] = [
+  { code: 'english', name: 'English USA', native: 'English' },
+  { code: 'hindi', name: 'Hindi', native: 'हिन्दी' },
+  { code: 'tamil', name: 'Tamil', native: 'தமிழ்' },
+  { code: 'telugu', name: 'Telugu', native: 'తెలుగు' },
+  { code: 'bengali', name: 'Bengali', native: 'বাংলা' },
+  { code: 'marathi', name: 'Marathi', native: 'मराठी' },
+  { code: 'gujarati', name: 'Gujarati', native: 'ગુજરાતી' },
+  { code: 'punjabi', name: 'Punjabi', native: 'ਪੰਜਾਬੀ' },
+  { code: 'urdu', name: 'Urdu', native: 'اردو' },
+  { code: 'kannada', name: 'Kannada', native: 'ಕನ್ನಡ' },
+  { code: 'malayalam', name: 'Malayalam', native: 'മലയാളം' },
+  { code: 'spanish', name: 'Spanish Spain', native: 'Español' },
+  { code: 'french', name: 'French France', native: 'Français' },
+  { code: 'german', name: 'German', native: 'Deutsch' },
+]
