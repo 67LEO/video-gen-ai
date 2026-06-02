@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: videogpt-tg-bot
+    runtime: node
+    repo: https://github.com/67LEO/video-gen-ai
+    branch: master
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: BOT_TOKEN
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: PORT
+        value: 10000

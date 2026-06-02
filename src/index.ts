@@ -3,6 +3,7 @@ dotenv.config()
 
 import bot from './bot.js'
 import fs from 'fs'
+import http from 'http'
 import { TMP_DIR } from './config.js'
 import { initDb, closePool } from './db.js'
 
@@ -16,16 +17,33 @@ if (!token) {
   process.exit(1)
 }
 
-// Init DB tables (safe: IF NOT EXISTS)
+// Init DB
 initDb().then(() => {
   console.log('✅ Database connected')
 }).catch((e) => {
   console.error('❌ Database init error:', e.message)
 })
 
+// Minimal HTTP server for Render health checks
+const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000
+const server = http.createServer((_req, res) => {
+  res.writeHead(200, { 'Content-Type': 'text/plain' })
+  res.end('ok')
+})
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`✅ Health server on port ${PORT}`)
+})
+
+// Start bot (polling mode)
 bot.launch(() => {
   console.log('🤖 VideoGPT Bot is running...')
 })
 
-process.once('SIGINT', () => { bot.stop('SIGINT'); closePool() })
-process.once('SIGTERM', () => { bot.stop('SIGTERM'); closePool() })
+// Graceful shutdown
+const shutdown = () => {
+  bot.stop('SIGINT')
+  server.close()
+  closePool()
+}
+process.once('SIGINT', shutdown)
+process.once('SIGTERM', shutdown)
