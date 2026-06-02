@@ -1,13 +1,22 @@
 import path from 'path'
 import { fileURLToPath } from 'url'
+import dotenv from 'dotenv'
+
+// Load .env before anything else (needed because ESM imports are hoisted)
+dotenv.config()
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const root = path.resolve(__dirname, '..')
 
-// Set these in .env for local dev, or Render env vars for deployment
-export const API_BASE = process.env.API_BASE!
-export const AES_KEY = process.env.AES_KEY!
-export const ELEVENLABS_BASE = process.env.ELEVENLABS_BASE!
+function requireEnv(key: string): string {
+  const val = process.env[key]
+  if (!val) throw new Error(`Missing required env var: ${key}`)
+  return val
+}
+
+export const API_BASE = requireEnv('API_BASE')
+export const AES_KEY = requireEnv('AES_KEY')
+export const ELEVENLABS_BASE = requireEnv('ELEVENLABS_BASE')
 export const FFMPEG_PATH = process.env.FFMPEG_PATH || ''
 export const TMP_DIR = path.join(root, 'tmp')
 
