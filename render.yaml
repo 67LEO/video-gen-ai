@@ -12,5 +12,11 @@ services:
         sync: false
       - key: DATABASE_URL
         sync: false
+      - key: API_BASE
+        value: https://videogpt.dataplazma.com/api/v1
+      - key: AES_KEY
+        value: nc98463tvkatrx03p59n0598t293v7hb
+      - key: ELEVENLABS_BASE
+        value: https://api.elevenlabs.io
       - key: PORT
         value: 10000
