@@ -34,9 +34,32 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log(`✅ Health server on port ${PORT}`)
 })
 
-// Start bot (polling mode)
-bot.launch(() => {
-  console.log('🤖 VideoGPT Bot is running...')
+// Start bot with retry on 409 (stale polling session)
+async function startBot() {
+  // Clear any stale webhook/polling session before starting
+  await bot.telegram.deleteWebhook({ drop_pending_updates: true }).catch(() => {})
+  await new Promise(r => setTimeout(r, 500))
+
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      await bot.launch()
+      console.log('🤖 VideoGPT Bot is running...')
+      return
+    } catch (e: any) {
+      if (e?.response?.error_code === 409 && attempt < 3) {
+        console.log(`⚠️ 409 conflict (attempt ${attempt}), retrying in 2s...`)
+        await new Promise(r => setTimeout(r, 2000))
+        await bot.telegram.deleteWebhook({ drop_pending_updates: true }).catch(() => {})
+      } else {
+        throw e
+      }
+    }
+  }
+}
+
+startBot().catch((e) => {
+  console.error('❌ Bot failed to start:', e.message)
+  process.exit(1)
 })
 
 // Graceful shutdown
