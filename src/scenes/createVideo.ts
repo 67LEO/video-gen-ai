@@ -231,7 +231,7 @@ export const createVideoWizard = new Scenes.WizardScene<Scenes.WizardContext>(
         { parse_mode: 'Markdown' },
       )
 
-      const videoPath = compileVideo(imageB64s, audioB64, aspect.w, aspect.h, s.duration / imageB64s.length)
+      const videoPath = await compileVideo(imageB64s, audioB64, aspect.w, aspect.h, s.duration / imageB64s.length)
 
       await ctx.editMessageText('📤 Uploading video...', { parse_mode: 'Markdown' })
 
