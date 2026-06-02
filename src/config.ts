@@ -1,13 +1,25 @@
 import path from 'path'
 import { fileURLToPath } from 'url'
-import { API_BASE as _API, AES_KEY as _AES, ELEVENLABS_BASE as _EL } from './secrets.js'
+
+// Try env vars first (for Render/Railway), fall back to secrets.ts
+function getSecret(envKey: string, b64Default: string): string {
+  if (process.env[envKey]) return process.env[envKey]!
+  if (b64Default) return Buffer.from(b64Default, 'base64').toString()
+  return ''
+}
+
+// Import from secrets.ts (gitignored, only present on local dev)
+let secrets: { API_BASE?: string; AES_KEY?: string; ELEVENLABS_BASE?: string } = {}
+try {
+  secrets = await import('./secrets.js')
+} catch {}
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const root = path.resolve(__dirname, '..')
 
-export const API_BASE = _API
-export const AES_KEY = _AES
-export const ELEVENLABS_BASE = _EL
+export const API_BASE = getSecret('API_BASE', secrets.API_BASE || '')
+export const AES_KEY = getSecret('AES_KEY', secrets.AES_KEY || '')
+export const ELEVENLABS_BASE = getSecret('ELEVENLABS_BASE', secrets.ELEVENLABS_BASE || '')
 export const FFMPEG_PATH = process.env.FFMPEG_PATH || ''
 export const TMP_DIR = path.join(root, 'tmp')
 
