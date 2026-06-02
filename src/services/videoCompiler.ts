@@ -66,7 +66,8 @@ export async function compileVideo(
 
   const noAudioVid = path.join(jobDir, 'no_audio.mp4')
   const listPath = path.join(jobDir, 'files.txt')
-  fs.writeFileSync(listPath, sceneVideos.map(v => `file '${v.replace(/\\/g, '\\\\')}'`).join('\n'))
+  // Use forward slashes for cross-platform FFmpeg concat compat
+  fs.writeFileSync(listPath, sceneVideos.map(v => `file '${v.replace(/\\/g, '/')}'`).join('\n'))
   await exec(ff, [
     '-f', 'concat', '-safe', '0', '-i', listPath,
     '-c:v', 'copy', '-an', '-y', noAudioVid,
