@@ -5,6 +5,7 @@ import { writeScript } from '../services/scriptWriter.js'
 import { getDefaultStyle, generateImages } from '../services/imageGen.js'
 import { generateVoiceover } from '../services/voiceover.js'
 import { compileVideo } from '../services/videoCompiler.js'
+import { upsertUser, getUserStats, incrementUsage, logVideoGen } from '../db.js'
 import fs from 'fs'
 
 interface VideoState {
@@ -12,8 +13,6 @@ interface VideoState {
   aspectRatio: string
   language: string
   topic: string
-  imageBase64s: string[]
-  audioBase64: string
 }
 
 function chunk<T>(arr: T[], n: number): T[][] {
@@ -22,7 +21,7 @@ function chunk<T>(arr: T[], n: number): T[][] {
   return r
 }
 
-function state(ctx: Scenes.WizardContext): VideoState {
+function st(ctx: Scenes.WizardContext): VideoState {
   return ctx.wizard.state as unknown as VideoState
 }
 
@@ -31,6 +30,11 @@ export const createVideoWizard = new Scenes.WizardScene<Scenes.WizardContext>(
 
   // Step 0: Duration
   async (ctx) => {
+    // Track user
+    const from = ctx.from
+    if (from) {
+      await upsertUser(from.id, from.first_name, from.username).catch(() => {})
+    }
     await ctx.reply(
       '🎬 *Step 1/5: Video Duration*\n\nHow long should the video be?',
       {
@@ -45,15 +49,14 @@ export const createVideoWizard = new Scenes.WizardScene<Scenes.WizardContext>(
 
   // Step 1: Aspect Ratio
   async (ctx) => {
-    if (!(ctx as any).callbackQuery?.data?.startsWith('dur_')) {
+    const cb = (ctx as any).callbackQuery
+    if (!cb?.data?.startsWith('dur_')) {
       await ctx.reply('Please select a duration using the buttons.')
       return
     }
-    const cb = (ctx as any).callbackQuery
-    ;(state(ctx)).duration = parseInt(cb.data.replace('dur_', ''), 10)
+    st(ctx).duration = parseInt(cb.data.replace('dur_', ''), 10)
     await ctx.answerCbQuery()
     await ctx.deleteMessage().catch(() => {})
-
     await ctx.reply(
       '📐 *Step 2/5: Aspect Ratio*\n\nChoose the video format:',
       {
@@ -68,19 +71,18 @@ export const createVideoWizard = new Scenes.WizardScene<Scenes.WizardContext>(
 
   // Step 2: Language
   async (ctx) => {
-    if (!(ctx as any).callbackQuery?.data?.startsWith('aspect_')) {
+    const cb = (ctx as any).callbackQuery
+    if (!cb?.data?.startsWith('aspect_')) {
       await ctx.reply('Please select an aspect ratio.')
       return
     }
-    const cb = (ctx as any).callbackQuery
-    ;(state(ctx)).aspectRatio = cb.data.replace('aspect_', '')
+    st(ctx).aspectRatio = cb.data.replace('aspect_', '')
     await ctx.answerCbQuery()
     await ctx.deleteMessage().catch(() => {})
 
     const langRows = chunk(LANGUAGES, 2).map(row =>
       row.map(l => Markup.button.callback(`${l.native}`, `lang_${l.code}`)),
     )
-
     await ctx.reply(
       '🌐 *Step 3/5: Language*\n\nChoose the video language:',
       {
@@ -93,17 +95,16 @@ export const createVideoWizard = new Scenes.WizardScene<Scenes.WizardContext>(
 
   // Step 3: Topic
   async (ctx) => {
-    if (!(ctx as any).callbackQuery?.data?.startsWith('lang_')) {
+    const cb = (ctx as any).callbackQuery
+    if (!cb?.data?.startsWith('lang_')) {
       await ctx.reply('Please select a language.')
       return
     }
-    const cb = (ctx as any).callbackQuery
     const langCode = cb.data.replace('lang_', '')
     const lang = LANGUAGES.find(l => l.code === langCode)
-    ;(state(ctx)).language = lang?.name || 'English USA'
+    st(ctx).language = lang?.name || 'English USA'
     await ctx.answerCbQuery()
     await ctx.deleteMessage().catch(() => {})
-
     await ctx.reply(
       '✍️ *Step 4/5: Topic*\n\nWhat should the video be about?\n\n' +
       'Examples:\n' +
@@ -122,8 +123,8 @@ export const createVideoWizard = new Scenes.WizardScene<Scenes.WizardContext>(
       await ctx.reply('Please send a text message with your topic.')
       return
     }
-    ;(state(ctx)).topic = msg.text
-    const s = state(ctx)
+    st(ctx).topic = msg.text
+    const s = st(ctx)
     const aspect = ASPECT_OPTIONS.find(a => a.id === s.aspectRatio)
 
     await ctx.reply(
@@ -138,6 +139,7 @@ export const createVideoWizard = new Scenes.WizardScene<Scenes.WizardContext>(
         ...Markup.inlineKeyboard([
           Markup.button.callback('✅ Generate Video', 'generate'),
           Markup.button.callback('❌ Cancel', 'cancel'),
+          Markup.button.callback('👑 Premium', 'premium'),
         ]),
       },
     )
@@ -159,8 +161,47 @@ export const createVideoWizard = new Scenes.WizardScene<Scenes.WizardContext>(
       return ctx.scene.leave()
     }
 
+    if (cb.data === 'premium') {
+      await ctx.answerCbQuery()
+      await ctx.deleteMessage().catch(() => {})
+      await ctx.reply(
+        '👑 *Premium Plan*\n\n' +
+        '• Unlimited videos (no daily limit)\n' +
+        `• All 14 languages\n` +
+        '• Higher priority generation\n\n' +
+        'Contact admin to purchase: @YourAdmin',
+        { parse_mode: 'Markdown' },
+      )
+      return ctx.scene.leave()
+    }
+
+    const s = st(ctx)
+    const from = ctx.from
+    const chatId = from?.id
+
+    // Check usage limit
+    if (chatId) {
+      const stats = await getUserStats(chatId)
+      if (stats && !stats.isPremium && stats.videoRemaining <= 0) {
+        await ctx.answerCbQuery()
+        await ctx.deleteMessage().catch(() => {})
+        await ctx.reply(
+          '⚠️ *Daily limit reached!*\n\n' +
+          'You\'ve used all 3 free video generations today.\n\n' +
+          '👑 Get premium for unlimited videos.\n' +
+          '⏰ Or wait until tomorrow for a fresh 3.',
+          {
+            parse_mode: 'Markdown',
+            ...Markup.inlineKeyboard([
+              Markup.button.callback('👑 Go Premium', 'premium'),
+            ]),
+          },
+        )
+        return ctx.scene.leave()
+      }
+    }
+
     await ctx.answerCbQuery()
-    const s = state(ctx)
     const aspect = ASPECT_OPTIONS.find(a => a.id === s.aspectRatio)!
 
     await ctx.editMessageText('⏳ *Generating your video...*\n\n1️⃣ Writing script...', { parse_mode: 'Markdown' })
@@ -204,6 +245,12 @@ export const createVideoWizard = new Scenes.WizardScene<Scenes.WizardContext>(
           parse_mode: 'Markdown',
         },
       )
+
+      // Track usage
+      if (chatId) {
+        incrementUsage(chatId).catch(() => {})
+        logVideoGen(chatId).catch(() => {})
+      }
 
       fs.rmSync(videoPath, { force: true })
       await ctx.reply('Use /create to make another video!')

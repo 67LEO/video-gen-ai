@@ -4,8 +4,8 @@ dotenv.config()
 import bot from './bot.js'
 import fs from 'fs'
 import { TMP_DIR } from './config.js'
+import { initDb, closePool } from './db.js'
 
-// Ensure tmp dir exists
 if (!fs.existsSync(TMP_DIR)) {
   fs.mkdirSync(TMP_DIR, { recursive: true })
 }
@@ -16,10 +16,16 @@ if (!token) {
   process.exit(1)
 }
 
+// Init DB tables (safe: IF NOT EXISTS)
+initDb().then(() => {
+  console.log('✅ Database connected')
+}).catch((e) => {
+  console.error('❌ Database init error:', e.message)
+})
+
 bot.launch(() => {
   console.log('🤖 VideoGPT Bot is running...')
 })
 
-// Graceful shutdown
-process.once('SIGINT', () => bot.stop('SIGINT'))
-process.once('SIGTERM', () => bot.stop('SIGTERM'))
+process.once('SIGINT', () => { bot.stop('SIGINT'); closePool() })
+process.once('SIGTERM', () => { bot.stop('SIGTERM'); closePool() })
