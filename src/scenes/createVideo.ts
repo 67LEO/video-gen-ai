@@ -148,72 +148,76 @@ export const createVideoWizard = new Scenes.WizardScene<Scenes.WizardContext>(
 
   // Step 5: Generate & Send
   async (ctx) => {
-    const cb = (ctx as any).callbackQuery
-    if (!cb) {
-      await ctx.reply('Please use the buttons to confirm.')
-      return
-    }
-
-    if (cb.data === 'cancel') {
-      await ctx.answerCbQuery()
-      await ctx.deleteMessage().catch(() => {})
-      await ctx.reply('Cancelled. Use /create to start again.')
-      return ctx.scene.leave()
-    }
-
-    if (cb.data === 'premium') {
-      await ctx.answerCbQuery()
-      await ctx.deleteMessage().catch(() => {})
-      await ctx.reply(
-        '👑 *Premium Plan*\n\n' +
-        '• Unlimited videos (no daily limit)\n' +
-        `• All 14 languages\n` +
-        '• Higher priority generation\n\n' +
-        'Contact admin to purchase: @YourAdmin',
-        { parse_mode: 'Markdown' },
-      )
-      return ctx.scene.leave()
-    }
-
-    const s = st(ctx)
-    const from = ctx.from
-    const chatId = from?.id
-
-    // Check usage limit
-    if (chatId) {
-      const stats = await getUserStats(chatId)
-      if (stats && !stats.isPremium && stats.videoRemaining <= 0) {
-        await ctx.answerCbQuery()
-        await ctx.deleteMessage().catch(() => {})
-        await ctx.reply(
-          '⚠️ *Daily limit reached!*\n\n' +
-          'You\'ve used all 3 free video generations today.\n\n' +
-          '👑 Get premium for unlimited videos.\n' +
-          '⏰ Or wait until tomorrow for a fresh 3.',
-          {
-            parse_mode: 'Markdown',
-            ...Markup.inlineKeyboard([
-              Markup.button.callback('👑 Go Premium', 'premium'),
-            ]),
-          },
-        )
+    try {
+      const cb = (ctx as any).callbackQuery
+      if (!cb) {
+        await ctx.reply('Please use the buttons to confirm.').catch(() => {})
         return ctx.scene.leave()
       }
-    }
 
-    await ctx.answerCbQuery()
-    const aspect = ASPECT_OPTIONS.find(a => a.id === s.aspectRatio)!
+      if (cb.data === 'cancel') {
+        await ctx.answerCbQuery().catch(() => {})
+        await ctx.deleteMessage().catch(() => {})
+        await ctx.reply('Cancelled. Use /create to start again.').catch(() => {})
+        return ctx.scene.leave()
+      }
 
-    await ctx.editMessageText('⏳ *Generating your video...*\n\n1️⃣ Writing script...', { parse_mode: 'Markdown' })
+      if (cb.data === 'premium') {
+        await ctx.answerCbQuery().catch(() => {})
+        await ctx.deleteMessage().catch(() => {})
+        await ctx.reply(
+          '👑 *Premium Plan*\n\n' +
+          '• Unlimited videos (no daily limit)\n' +
+          '• All 14 languages\n' +
+          '• Higher priority generation\n\n' +
+          'Contact admin to purchase: @YourAdmin',
+          { parse_mode: 'Markdown' },
+        ).catch(() => {})
+        return ctx.scene.leave()
+      }
 
-    try {
+      const s = st(ctx)
+      const from = ctx.from
+      const chatId = from?.id
+
+      // Check usage limit
+      if (chatId) {
+        try {
+          const stats = await getUserStats(chatId)
+          if (stats && !stats.isPremium && stats.videoRemaining <= 0) {
+            await ctx.answerCbQuery().catch(() => {})
+            await ctx.deleteMessage().catch(() => {})
+            await ctx.reply(
+              '⚠️ *Daily limit reached!*\n\n' +
+              'You\'ve used all 3 free video generations today.\n\n' +
+              '👑 Get premium for unlimited videos.\n' +
+              '⏰ Or wait until tomorrow for a fresh 3.',
+              {
+                parse_mode: 'Markdown',
+                ...Markup.inlineKeyboard([
+                  Markup.button.callback('👑 Go Premium', 'premium'),
+                ]),
+              },
+            ).catch(() => {})
+            return ctx.scene.leave()
+          }
+        } catch {
+          // DB error — allow the generation anyway
+        }
+      }
+
+      await ctx.answerCbQuery().catch(() => {})
+      const aspect = ASPECT_OPTIONS.find(a => a.id === s.aspectRatio)!
+
+      await ctx.editMessageText('⏳ *Generating your video...*\n\n1️⃣ Writing script...', { parse_mode: 'Markdown' }).catch(() => {})
+
       const sceneCount = Math.max(Math.round((s.duration * 2) / 60), 2)
       const script = await writeScript(s.topic, s.language, sceneCount)
 
       await ctx.editMessageText(
         `⏳ *Generating...*\n\n1️⃣ ✅ Script (${script.scenes.length} scenes)\n2️⃣ Generating images...`,
         { parse_mode: 'Markdown' },
-      )
+      ).catch(() => {})
 
       const style = await getDefaultStyle()
       const imageB64s = await generateImages(script.scenes, style, aspect.w, aspect.h)
@@ -221,7 +225,7 @@ export const createVideoWizard = new Scenes.WizardScene<Scenes.WizardContext>(
       await ctx.editMessageText(
         `⏳ *Generating...*\n\n1️⃣ ✅ Script\n2️⃣ ✅ Images (${imageB64s.length})\n3️⃣ Generating voiceover...`,
         { parse_mode: 'Markdown' },
-      )
+      ).catch(() => {})
 
       const voiceText = script.scenes.map(s => s.audioText || s.description).join('. ')
       const audioB64 = await generateVoiceover(voiceText, '21m00Tcm4TlvDq8ikWAM', s.language)
@@ -229,11 +233,11 @@ export const createVideoWizard = new Scenes.WizardScene<Scenes.WizardContext>(
       await ctx.editMessageText(
         `⏳ *Generating...*\n\n1️⃣ ✅ Script\n2️⃣ ✅ Images\n3️⃣ ✅ Voiceover\n4️⃣ Compiling video...`,
         { parse_mode: 'Markdown' },
-      )
+      ).catch(() => {})
 
       const videoPath = await compileVideo(imageB64s, audioB64, aspect.w, aspect.h, s.duration / imageB64s.length)
 
-      await ctx.editMessageText('📤 Uploading video...', { parse_mode: 'Markdown' })
+      await ctx.editMessageText('📤 Uploading video...', { parse_mode: 'Markdown' }).catch(() => {})
 
       await ctx.replyWithVideo(
         { source: fs.createReadStream(videoPath) },
@@ -253,22 +257,24 @@ export const createVideoWizard = new Scenes.WizardScene<Scenes.WizardContext>(
       }
 
       fs.rmSync(videoPath, { force: true })
-      await ctx.reply('Use /create to make another video!')
+      await ctx.reply('Use /create to make another video!').catch(() => {})
 
     } catch (e: any) {
-      const msg = e.message || 'Unknown error'
-      if (msg === 'HIGH_TRAFFIC') {
-        await ctx.editMessageText(
-          '⚠️ *Image servers are busy.*\n\nPlease try again in a few minutes.',
-          { parse_mode: 'Markdown' },
-        )
-      } else {
-        const errText = msg.split('\n').slice(0, 5).join('\n')
-        await ctx.editMessageText(
-          `❌ *Error:*\n\`\`\`\n${errText}\n\`\`\`\n\nUse /create to try again.`,
-          { parse_mode: 'Markdown' },
-        )
-      }
+      try {
+        const msg = e.message || 'Unknown error'
+        if (msg === 'HIGH_TRAFFIC') {
+          await ctx.editMessageText(
+            '⚠️ *Image servers are busy.*\n\nPlease try again in a few minutes.',
+            { parse_mode: 'Markdown' },
+          ).catch(() => {})
+        } else {
+          const errText = msg.split('\n').slice(0, 5).join('\n')
+          await ctx.editMessageText(
+            `❌ *Error:*\n\`\`\`\n${errText}\n\`\`\`\n\nUse /create to try again.`,
+            { parse_mode: 'Markdown' },
+          ).catch(() => {})
+        }
+      } catch {}
     }
 
     return ctx.scene.leave()

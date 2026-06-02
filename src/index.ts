@@ -17,6 +17,14 @@ if (!token) {
   process.exit(1)
 }
 
+// Global handlers — log but don't crash on unhandled rejections
+process.on('unhandledRejection', (err) => {
+  console.error('⚠️ unhandledRejection:', (err as any)?.message || err)
+})
+process.on('uncaughtException', (err) => {
+  console.error('⚠️ uncaughtException:', err.message)
+})
+
 // Init DB
 initDb().then(() => {
   console.log('✅ Database connected')
@@ -24,7 +32,6 @@ initDb().then(() => {
   console.error('❌ Database init error:', e.message)
 })
 
-// Minimal HTTP server for Render health checks
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000
 const server = http.createServer((_req, res) => {
   res.writeHead(200, { 'Content-Type': 'text/plain' })
@@ -34,27 +41,27 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log(`✅ Health server on port ${PORT}`)
 })
 
-// Start bot with retry on 409 (stale polling session)
 async function startBot() {
-  // Clear any stale webhook/polling session before starting
+  // Clear stale session first
   await bot.telegram.deleteWebhook({ drop_pending_updates: true }).catch(() => {})
-  await new Promise(r => setTimeout(r, 500))
+  await new Promise(r => setTimeout(r, 2000))
 
-  for (let attempt = 1; attempt <= 3; attempt++) {
+  for (let attempt = 1; attempt <= 5; attempt++) {
     try {
       await bot.launch()
       console.log('🤖 VideoGPT Bot is running...')
       return
     } catch (e: any) {
-      if (e?.response?.error_code === 409 && attempt < 3) {
-        console.log(`⚠️ 409 conflict (attempt ${attempt}), retrying in 2s...`)
-        await new Promise(r => setTimeout(r, 2000))
+      if (e?.response?.error_code === 409) {
+        console.log(`⚠️ 409 conflict (attempt ${attempt}/5), retrying in ${attempt * 3}s...`)
+        await new Promise(r => setTimeout(r, attempt * 3000))
         await bot.telegram.deleteWebhook({ drop_pending_updates: true }).catch(() => {})
       } else {
         throw e
       }
     }
   }
+  throw new Error('Max retries for 409 conflict')
 }
 
 startBot().catch((e) => {
@@ -62,7 +69,6 @@ startBot().catch((e) => {
   process.exit(1)
 })
 
-// Graceful shutdown
 const shutdown = () => {
   bot.stop('SIGINT')
   server.close()
