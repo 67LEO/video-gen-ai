@@ -3,18 +3,21 @@ import type { ScriptScene, ScriptResult } from '../types.js'
 
 async function fetchWithRetry(url: string, opts: RequestInit, max = 3): Promise<Response> {
   for (let i = 0; i <= max; i++) {
-    const res = await fetch(url, opts)
-    if (res.ok) return res
-    const body = await res.text().catch(() => '')
-    const lower = body.toLowerCase()
-    if (lower.includes('high traffic') && i < max) {
-      await new Promise(r => setTimeout(r, 2000 * 2 ** i))
-      continue
-    }
-    if (lower.includes('prohibited content')) {
-      throw new Error('PROHIBITED_CONTENT')
-    }
-    throw new Error(`API error ${res.status}: ${body.slice(0, 200)}`)
+    const ctrl = new AbortController()
+    const timer = setTimeout(() => ctrl.abort(), 25000)
+    try {
+      const res = await fetch(url, { ...opts, signal: ctrl.signal })
+      clearTimeout(timer)
+      if (res.ok) return res
+      const body = await res.text().catch(() => '')
+      const lower = body.toLowerCase()
+      if (lower.includes('high traffic') && i < max) {
+        await new Promise(r => setTimeout(r, 2000 * 2 ** i))
+        continue
+      }
+      if (lower.includes('prohibited content')) throw new Error('PROHIBITED_CONTENT')
+      throw new Error(`API error ${res.status}: ${body.slice(0, 200)}`)
+    } finally { clearTimeout(timer) }
   }
   throw new Error('Max retries exceeded')
 }

@@ -46,6 +46,10 @@ async function startBot() {
   await bot.telegram.deleteWebhook({ drop_pending_updates: true }).catch(() => {})
   await new Promise(r => setTimeout(r, 2000))
 
+  bot.catch((err: unknown) => {
+    console.error('⚠️ bot error:', err instanceof Error ? err.message : err)
+  })
+
   for (let attempt = 1; attempt <= 5; attempt++) {
     try {
       await bot.launch()
@@ -53,8 +57,9 @@ async function startBot() {
       return
     } catch (e: any) {
       if (e?.response?.error_code === 409) {
-        console.log(`⚠️ 409 conflict (attempt ${attempt}/5), retrying in ${attempt * 3}s...`)
-        await new Promise(r => setTimeout(r, attempt * 3000))
+        const delay = attempt * 1000
+        console.log(`⚠️ 409 conflict (attempt ${attempt}/5), retrying in ${delay / 1000}s...`)
+        await new Promise(r => setTimeout(r, delay))
         await bot.telegram.deleteWebhook({ drop_pending_updates: true }).catch(() => {})
       } else {
         throw e

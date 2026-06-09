@@ -21,7 +21,9 @@ interface Style {
 }
 
 export async function getDefaultStyle(): Promise<Style> {
-  const res = await fetch(`${API_BASE}/styles?page=1&perPage=50`)
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), 15000)
+  const res = await fetch(`${API_BASE}/styles?page=1&perPage=50`, { signal: ctrl.signal }).finally(() => clearTimeout(timer))
   if (!res.ok) throw new Error(`Styles fetch failed: ${res.status}`)
   const data = await res.json() as { items: Style[] }
   return data.items.find(s => s.id === 72) || data.items[0]

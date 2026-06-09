@@ -3,16 +3,26 @@ import { encryptToken } from './encrypt.js'
 
 let elevenLabsKey: string | null = null
 
+function tmo(ms = 25000) {
+  const c = new AbortController()
+  const t = setTimeout(() => c.abort(), ms)
+  return { signal: c.signal, done() { clearTimeout(t) } }
+}
+
 export async function getElevenLabsKey(): Promise<string> {
   if (elevenLabsKey) return elevenLabsKey
   const token = encryptToken()
-  const res = await fetch(`${API_BASE}/reference/elevenlabs`, {
-    headers: { Authorization: `Bearer ${token}` },
-  })
-  if (!res.ok) throw new Error(`Failed to fetch ElevenLabs key: ${res.status}`)
-  const data = await res.json() as { xi_api_token: string }
-  elevenLabsKey = data.xi_api_token
-  return elevenLabsKey
+  const s = tmo()
+  try {
+    const res = await fetch(`${API_BASE}/reference/elevenlabs`, {
+      signal: s.signal,
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (!res.ok) throw new Error(`Failed to fetch ElevenLabs key: ${res.status}`)
+    const data = await res.json() as { xi_api_token: string }
+    elevenLabsKey = data.xi_api_token
+    return elevenLabsKey
+  } finally { s.done() }
 }
 
 export async function generateVoiceover(
@@ -40,17 +50,19 @@ export async function generateVoiceover(
     body.language_code = langMap[language]
   }
 
-  const res = await fetch(`${ELEVENLABS_BASE}/v1/text-to-speech/${voiceId}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'xi-api-key': key },
-    body: JSON.stringify(body),
-  })
-
-  if (!res.ok) {
-    const errText = await res.text().catch(() => '')
-    throw new Error(`TTS failed: ${res.status} - ${errText.slice(0, 200)}`)
-  }
-
-  const buf = Buffer.from(await res.arrayBuffer())
-  return buf.toString('base64')
+  const s = tmo(30000)
+  try {
+    const res = await fetch(`${ELEVENLABS_BASE}/v1/text-to-speech/${voiceId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'xi-api-key': key },
+      body: JSON.stringify(body),
+      signal: s.signal,
+    })
+    if (!res.ok) {
+      const errText = await res.text().catch(() => '')
+      throw new Error(`TTS failed: ${res.status} - ${errText.slice(0, 200)}`)
+    }
+    const buf = Buffer.from(await res.arrayBuffer())
+    return buf.toString('base64')
+  } finally { s.done() }
 }
