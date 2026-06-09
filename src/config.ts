@@ -8,11 +8,8 @@ dotenv.config()
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const root = path.resolve(__dirname, '..')
 
-// Try secrets.ts (gitignored — may not exist on Render), then fall back to process.env
-const _sec = await import('./secrets.js').catch(() => null) as Record<string, string> | null
-
 function req(key: string): string {
-  const v = process.env[key] ?? _sec?.[key]
+  const v = process.env[key]
   if (!v) throw new Error(`Missing required env var: ${key}`)
   return v
 }
