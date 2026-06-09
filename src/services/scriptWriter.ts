@@ -30,7 +30,7 @@ export async function writeScript(
 ): Promise<ScriptResult> {
   const url = `${API_BASE}/completions/script-writer-extended?style_id=&is_subscriber=%20`
   const finalPrompt = language !== 'English USA'
-    ? `Write "${prompt}" in "${language}" language only`
+    ? `${language}: Write "${prompt}"`
     : `Write "${prompt}"`
 
   const batches: { descs: string[]; vo: string }[] = []
