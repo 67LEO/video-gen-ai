@@ -79,7 +79,7 @@ export async function compileVideo(
     '-i', audioPath,
     '-c:v', 'copy',
     '-map', '0:v:0', '-map', '1:a:0',
-    '-af', 'apad', '-y', output,
+    '-af', 'apad', '-shortest', '-y', output,
   ], { timeout: 120000 })
 
   return output
