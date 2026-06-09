@@ -8,15 +8,18 @@ dotenv.config()
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const root = path.resolve(__dirname, '..')
 
-function requireEnv(key: string): string {
-  const val = process.env[key]
-  if (!val) throw new Error(`Missing required env var: ${key}`)
-  return val
+// Try secrets.ts (gitignored — may not exist on Render), then fall back to process.env
+const _sec = await import('./secrets.js').catch(() => null) as Record<string, string> | null
+
+function req(key: string): string {
+  const v = process.env[key] ?? _sec?.[key]
+  if (!v) throw new Error(`Missing required env var: ${key}`)
+  return v
 }
 
-export const API_BASE = requireEnv('API_BASE')
-export const AES_KEY = requireEnv('AES_KEY')
-export const ELEVENLABS_BASE = requireEnv('ELEVENLABS_BASE')
+export const API_BASE = req('API_BASE')
+export const AES_KEY = req('AES_KEY')
+export const ELEVENLABS_BASE = req('ELEVENLABS_BASE')
 export const FFMPEG_PATH = process.env.FFMPEG_PATH || ''
 export const TMP_DIR = path.join(root, 'tmp')
 
