@@ -270,6 +270,11 @@ export const createVideoWizard = new Scenes.WizardScene<Scenes.WizardContext>(
             '⚠️ *Image servers are busy.*\n\nPlease try again in a few minutes.',
             { parse_mode: 'Markdown' },
           ).catch(() => {})
+        } else if (msg === 'PROHIBITED_CONTENT') {
+          await ctx.editMessageText(
+            '🚫 *Content filter triggered*\n\nYour topic was rejected by the content moderation system. Please try a different, more appropriate topic.\n\nUse /create to try again.',
+            { parse_mode: 'Markdown' },
+          ).catch(() => {})
         } else {
           const errText = msg.split('\n').slice(0, 5).join('\n')
           await ctx.editMessageText(

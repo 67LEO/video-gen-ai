@@ -6,9 +6,13 @@ async function fetchWithRetry(url: string, opts: RequestInit, max = 3): Promise<
     const res = await fetch(url, opts)
     if (res.ok) return res
     const body = await res.text().catch(() => '')
-    if (res.status === 400 && body.includes('high traffic') && i < max) {
+    const lower = body.toLowerCase()
+    if (lower.includes('high traffic') && i < max) {
       await new Promise(r => setTimeout(r, 2000 * 2 ** i))
       continue
+    }
+    if (lower.includes('prohibited content')) {
+      throw new Error('PROHIBITED_CONTENT')
     }
     throw new Error(`API error ${res.status}: ${body.slice(0, 200)}`)
   }
