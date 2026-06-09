@@ -3,7 +3,7 @@ import { createVideoWizard } from './scenes/createVideo.js'
 
 type BotContext = Scenes.WizardContext
 
-const bot = new Telegraf<BotContext>(process.env.BOT_TOKEN || '')
+const bot = new Telegraf<BotContext>(process.env.BOT_TOKEN || '', { handlerTimeout: 300_000 })
 
 const stage = new Scenes.Stage<BotContext>([createVideoWizard])
 
