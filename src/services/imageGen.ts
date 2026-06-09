@@ -2,6 +2,17 @@ import crypto from 'crypto'
 import { API_BASE } from '../config.js'
 import type { ScriptScene } from '../types.js'
 
+async function fetchWithTimeout(url: string, opts: RequestInit & { timeout?: number }, ms = 30000) {
+  const ctrl = new AbortController()
+  const id = setTimeout(() => ctrl.abort(), ms)
+  try {
+    const res = await fetch(url, { ...opts, signal: ctrl.signal })
+    return res
+  } finally {
+    clearTimeout(id)
+  }
+}
+
 interface Style {
   id: number
   name: string
@@ -37,13 +48,14 @@ export async function generateImages(
     id: crypto.randomUUID(),
   }))
 
-  const res = await fetch(
+  const res = await fetchWithTimeout(
     `${API_BASE}/runpod-wrapper/call?endpoint=generate-batch&style_id=${style.id}`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'app-version': '2.1.5' },
       body: JSON.stringify(payload),
     },
+    60000,
   )
 
   if (!res.ok) {
